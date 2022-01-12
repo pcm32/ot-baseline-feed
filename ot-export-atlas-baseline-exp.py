@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 import os.path
-import sys
 import pandas as pd
 import json
 import xml.etree.ElementTree as ET
 import argparse
 from os.path import basename
+from itertools import chain
 
 arg_parser = argparse.ArgumentParser()
 arg_parser.add_argument('-p', '--path-to-experiment', required=True,
@@ -116,14 +116,45 @@ def read_idf_to_dict(idf_path):
     return res
 
 
+def get_expression_units(experiment_type):
+    """
+    Provides the expression units that are applicable for experiment type
+    TODO this probably should be somehow derived from files, instead of hardcoded here.
+
+    :param experiment_type: as reported in the configuration XML file
+    :return: array with units that we expect to find for that exp type
+    """
+
+    if experiment_type == "rnaseq_mrna_baseline":
+        return ["tpms", "fpkms", "transcript-tpms"]
+    if experiment_type == "proteomics_baseline":
+        return ["ppb"]
+    if experiment_type == "proteomics_baseline_dia":
+        return ["aa"]
+
+def get_file_label(experiment_type, expression_unit):
+    """
+    Currently Atlas file naming requires some corrections of the file names for expression data
+    on some cases.
+
+    :param experiment_type:
+    :param expression_unit:
+    :return:
+    """
+
+    if "proteomics_baseline" in experiment_type:
+        return ""
+    else:
+        return f"-{expression_unit}"
+
 def data_iterator(data_path, metadata, unit):
     """
     Iterator method to get dictionary of expression per gene, as it traverses
     an atlas data file.
 
-    :param data_path:
-    :param metadata:
-    :param unit:
+    :param data_path: path to the expression data file (decorated)
+    :param metadata: the assay dictionary as produced by produce_assay_dict
+    :param unit: the unit to be used (tpms, fpkms, etc)
     :return:
     """
     assays_per_group = {}
@@ -154,6 +185,32 @@ def data_iterator(data_path, metadata, unit):
             yield entry
 
 
+def get_provider(idf_dict):
+    """
+    The provider gets generated from the IDF Person fields, merging last name and first names
+    in the order they appear in columns.
+
+    There is not always guarantee that an IDF's person field will actually list people
+    and not other things like institutions, so this is a bit dirty.
+
+    :param idf_dict: as read from the IDF file.
+    :return:
+    """
+
+    f"{idf_dict['person last name']}, {idf_dict['person first name']}"
+    first_names = []
+    if 'person first name' in idf_dict:
+        first_names = idf_dict['person first name'].split("\t")
+    last_names = []
+    if 'person last name' in idf_dict:
+        last_names = idf_dict['person last name'].split("\t")
+    if last_names and first_names and len(last_names) == len(first_names):
+        # both arrays have the same number of objects
+        return "; ".join(list(chain.from_iterable(zip(first_names, last_names))))
+    if last_names:
+        return "; ".join(last_names)
+    else:
+        return "Not available"
 
 
 if __name__ == '__main__':
@@ -172,22 +229,27 @@ if __name__ == '__main__':
     idf_path = f"{args.path_to_experiment}/{acc}.idf.txt"
     idf_dict = read_idf_to_dict(idf_path)
 
+    lit_ids = []
+    if 'pubmed id' in idf_dict:
+        lit_ids = idf_dict['pubmed id'].split("\t")
+    provider = get_provider(idf_dict)
     metadata = produce_metadata(acc=acc,
                                 expType=expType,
                                 species=get_annotation_value_from_condensed(condensed_pd, annotation="organism"),
-                                literature_ids=idf_dict['pubmed id'].split("\t"),
-                                provider=f"{idf_dict['person last name']}, {idf_dict['person first name']}",
+                                literature_ids=lit_ids,
+                                provider=provider,
                                 assay_dictionary=assay_dictionary
                                 )
 
     with open(f"{args.output}/{acc}.metadata.json", 'w') as metadata_out:
         json.dump(metadata, metadata_out)
 
-    for type in ["tpms", "fpkms"]:
-        data_file = f"{args.path_to_experiment}/{acc}-{type}.tsv"
+    for unit in get_expression_units(experiment_type=expType):
+        file_label = get_file_label(expType, unit)
+        data_file = f"{args.path_to_experiment}/{acc}{file_label}.tsv"
         if os.path.isfile(data_file):
-            with open(f"{args.output}/{acc}-expression-data-{type}.jsonl", 'w') as data_jsonl:
-                for exp_d in data_iterator(data_file, assay_dictionary, type):
+            with open(f"{args.output}/{acc}-expression-data-{unit}.jsonl", 'w') as data_jsonl:
+                for exp_d in data_iterator(data_file, assay_dictionary, unit):
                     data_jsonl.write(json.dumps(exp_d)+"\n")
 
 
