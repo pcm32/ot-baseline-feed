@@ -6,10 +6,17 @@ import xml.etree.ElementTree as ET
 import argparse
 from os.path import basename
 from itertools import chain
+from re import sub
 
 arg_parser = argparse.ArgumentParser()
 arg_parser.add_argument('-p', '--path-to-experiment', required=True,
-                        help="Path to the directory where experiment, accession inferred from basename.")
+                        help="Path to the directory where the experiment is, accession inferred from basename. Should "
+                             "contain <accession>.condensed-sdrf.tsv, <>-idf.txt, <>-configuration.xml, <>-fpkms.tsv, "
+                             "<>-tpms.tsv. Usually $ATLAS_EXPS/<accession>.")
+arg_parser.add_argument('-n', '--non-aggregated-data-dir', required=False,
+                        help="Path to the dir where experiments non-aggregated data is available, "
+                             "to produce the non-aggregated data files. It expects to find files "
+                             "<>-fpkms.tsv.undecorated and <>-tpms.tsv.undecorated")
 arg_parser.add_argument('-o', '--output', required=True,
                         help="Directoy path for output. Two files created, one for data and one for metadata"
                         )
@@ -18,6 +25,7 @@ FIXTURE_DIR = os.path.join(
     os.path.dirname(os.path.realpath(__file__)),
     'test-data',
     )
+
 
 def read_condensed(condensed_path):
     cond_cols = ['Accession', 'Array', 'Sample', 'Annot_type', 'Annot', 'Annot_value', 'Annot_ont_URI']
@@ -29,10 +37,10 @@ def read_configuration(configuration_path):
         return ET.parse(conf_file).getroot()
 
 
-def produce_metadata(acc, expType, species, literature_ids, provider, assay_dictionary):
+def produce_metadata(acc, exp_type, species, literature_ids, provider, assay_dictionary):
     """
     :param acc: obtained from condensed or path
-    :param expType: obtained from configuration file
+    :param exp_type: obtained from configuration file
     :param species: obtained from condensed SDRF
     :param literature_ids: obtained from IDF
     :param provider: IDF Person last name and First name, if existing.
@@ -42,7 +50,7 @@ def produce_metadata(acc, expType, species, literature_ids, provider, assay_dict
 
     metadata = dict()
     metadata['experimentId'] = acc
-    metadata['experimentType'] = expType
+    metadata['experimentType'] = exp_type
     metadata['species'] = species
     metadata['literature'] = literature_ids
     metadata['provider'] = provider
@@ -124,7 +132,7 @@ def produce_assay_dict(condensed_df, configuration_xml):
     >>> cond_df = read_condensed(f"{FIXTURE_DIR}/{acc}/{acc}.condensed-sdrf.tsv")
     >>> conf_xml = read_configuration(f"{FIXTURE_DIR}/{acc}/{acc}-configuration.xml")
     >>> assay_dict = produce_assay_dict(cond_df, conf_xml)
-    >>> assay_dict[0]['id']
+    >>> assay_dict[0]['assay']
     'ERR732483'
     >>> len(assay_dict)
     4
@@ -133,15 +141,15 @@ def produce_assay_dict(condensed_df, configuration_xml):
     assay_dict = []
     for ag in configuration_xml.iter("assay_group"):
         for assay in ag:
-            entry = {'assay_group': ag.get("id"), 'id': assay.text}
+            entry = {'assayGroup': ag.get("id"), 'assay': assay.text}
 
             for annot in get_all_annotation_fields_for_sample_from_condensed(condensed_df, assay.text):
                 value = get_annotation_value_from_condensed(condensed_df, annot, sample=assay.text)
                 if value:
-                    entry[annot] = value
+                    entry[camel_case(annot)] = value
 
             if 'technical_replicate_id' in assay.attrib:
-                entry['technical_replicate_id'] = assay.attrib['technical_replicate_id']
+                entry['technicalReplicateId'] = assay.attrib['technical_replicate_id']
 
             assay_dict.append(entry)
     return assay_dict
@@ -201,10 +209,11 @@ def get_file_label(experiment_type, expression_unit):
     else:
         return f"-{expression_unit}"
 
-def data_iterator(data_path, metadata, unit):
+
+def quartile_data_iterator(data_path, metadata, unit):
     """
-    Iterator method to get dictionary of expression per gene, as it traverses
-    an atlas data file.
+    Iterator method to get dictionary of expression (min, q1, q2, q3, max) per gene, as it traverses
+    an atlas data file, on a per assay_group level.
 
     :param data_path: path to the expression data file (decorated)
     :param metadata: the assay dictionary as produced by produce_assay_dict
@@ -213,14 +222,16 @@ def data_iterator(data_path, metadata, unit):
     """
     assays_per_group = {}
     # first we create a dictionary of assay groups to their ordered assays in arrays.
-    for assay in metadata:
-        if not assay['assay_group'] in assays_per_group:
-            assays_per_group[assay['assay_group']] = []
-        assays_per_group[assay['assay_group']].append(assay['id'])
+    # for assay in metadata:
+    #     if not assay['assay_group'] in assays_per_group:
+    #         assays_per_group[assay['assay_group']] = []
+    #     assays_per_group[assay['assay_group']].append(assay['id'])
 
     with open(data_path, 'r') as data_file:
         header = data_file.readline().strip().split("\t")
         assay_groups = header[2:len(header)]
+
+        check_biyection(assay_groups, metadata)
 
         for line in data_file:
             tokens = line.strip().split("\t")
@@ -230,13 +241,29 @@ def data_iterator(data_path, metadata, unit):
             for ag_i in range(0, len(assay_groups)):
                 ag = assay_groups[ag_i]
                 ag_data = tokens[2+ag_i].split(",")
-                for a_i in range(0, len(assays_per_group[ag])):
-                    assay = assays_per_group[ag][a_i]
-                    exp = ag_data[a_i]
-                    expression_entry = {'experimentDesignID': assay, "value": exp }
-                    entry['expression'].append(expression_entry)
+                expression_entry = {'agId': ag,
+                                    "min": float(ag_data[0]),
+                                    "q1": float(ag_data[1]),
+                                    "q2": float(ag_data[2]),
+                                    "q3": float(ag_data[3]),
+                                    "max": float(ag_data[4]) }
+                entry['expression'].append(expression_entry)
+
 
             yield entry
+
+
+def check_biyection(elements_in_data, metadata, type="assayGroup"):
+    e_in_metadata = set()
+    for m in metadata:
+        e_in_metadata.add(m[type])
+    e_in_data = set(elements_in_data)
+    e_only_metadata = e_in_metadata.difference(e_in_data)
+    if e_only_metadata:
+        print(f"WARNING: Assay groups only in meta data: {', '.join(e_only_metadata)}")
+    e_only_data = e_in_data.difference(e_in_metadata)
+    if e_only_data:
+        print(f"WARNING: Assay groups only in data: {', '.join(e_only_data)}")
 
 
 def get_provider(idf_dict):
@@ -272,6 +299,42 @@ def get_provider(idf_dict):
         return "Not available"
 
 
+def camel_case(s):
+    s = sub(r"(_|-)+", " ", s).title().replace(" ", "")
+    return ''.join([s[0].lower(), s[1:]])
+
+
+def unaggregated_data_iterator(data_path, assay_dictionary, unit):
+    """
+    Iterator method to get dictionary of expression per gene, as it traverses
+    an atlas data file.
+    :param data_path: path to the unaggregated expression data file (decorated)
+    :param metadata: the assay dictionary as produced by produce_assay_dict
+    :param unit: the unit to be used (tpms, fpkms, etc)
+    :return:
+    """
+
+    first_data_index = 1
+    with open(data_path, 'r') as data_file:
+        header = data_file.readline().strip().split("\t")
+        assays = header[first_data_index:len(header)]
+
+        check_biyection(assays, assay_dictionary, type="assay")
+
+        for line in data_file:
+            tokens = line.strip().split("\t")
+            gene_id = tokens[0]
+            entry = {"geneProductId": gene_id, "expression": [], "unit": unit}
+
+            for a_i in range(0, len(assays)):
+                assay = assays[a_i]
+                exp = tokens[first_data_index + a_i]
+                expression_entry = {'aId': assay, "value": float(exp)}
+                entry['expression'].append(expression_entry)
+
+            yield entry
+
+
 if __name__ == '__main__':
     args = arg_parser.parse_args()
 
@@ -293,7 +356,7 @@ if __name__ == '__main__':
         lit_ids = idf_dict['pubmed id'].split("\t")
     provider = get_provider(idf_dict)
     metadata = produce_metadata(acc=acc,
-                                expType=expType,
+                                exp_type=expType,
                                 species=get_annotation_value_from_condensed(condensed_pd, annotation="organism"),
                                 literature_ids=lit_ids,
                                 provider=provider,
@@ -308,8 +371,16 @@ if __name__ == '__main__':
         data_file = f"{args.path_to_experiment}/{acc}{file_label}.tsv"
         if os.path.isfile(data_file):
             with open(f"{args.output}/{acc}-expression-data-{unit}.jsonl", 'w') as data_jsonl:
-                for exp_d in data_iterator(data_file, assay_dictionary, unit):
+                for exp_d in quartile_data_iterator(data_file, assay_dictionary, unit):
                     data_jsonl.write(json.dumps(exp_d)+"\n")
+
+        if args.non_aggregated_data_dir:
+            unaggregated_data_file = f"{args.non_aggregated_data_dir}/{acc}{file_label}.tsv.undecorated"
+            
+            if os.path.isfile(unaggregated_data_file):
+                with open(f"{args.output}/{acc}-unaggregated-expression-data-{unit}.jsonl", "w") as data_jsonl:
+                    for exp_d in unaggregated_data_iterator(unaggregated_data_file, assay_dictionary, unit):
+                        data_jsonl.write(json.dumps(exp_d)+"\n")
 
 
 
