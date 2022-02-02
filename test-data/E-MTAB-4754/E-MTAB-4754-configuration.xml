@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<configuration experimentType="rnaseq_mrna_baseline" r_data="1">
+    <analytics>
+        <assay_groups>
+            <assay_group id="g1" label="plasma cell">
+                <assay>ERR732483</assay>
+                <assay>ERR732485</assay>
+                <assay>ERR732484</assay>
+                <assay>ERR732486</assay>
+            </assay_group>
+        </assay_groups>
+    </analytics>
+</configuration>

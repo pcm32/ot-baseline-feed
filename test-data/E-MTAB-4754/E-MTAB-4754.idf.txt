@@ -1,0 +1,69 @@
+MAGE-TAB Version	1.1
+Investigation Title	RNA-Seq of polyA mRNA from plasma cells of tonsil from healthy individuals in the BLUEPRINT epigenome project
+
+Experimental Design	cell type comparison design
+Experimental Design Term Source REF	EFO
+Experimental Design Term Accession Number	EFO_0001745
+
+Experimental Factor Name	individual
+Experimental Factor Type	individual
+Experimental Factor Term Source REF	EFO
+Experimental Factor Term Accession Number	EFO_0000324
+
+Person Last Name	BLUEPRINT consortium	ArrayExpress
+Person First Name		
+Person Mid Initials		
+Person Email	blueprint-dcc@ebi.ac.uk	arrayexpress@ebi.ac.uk
+Person Phone		
+Person Fax		
+Person Affiliation		EMBL European Bioinformatics Institute
+Person Address		
+Person Roles	data analyst;data coder	submitter
+Person Roles Term Source REF		
+Person Roles Term Accession Number		
+
+Quality Control Type
+Quality Control Term Source REF
+Quality Control Term Accession Number
+
+Replicate Type
+Replicate Term Source REF
+Replicate Term Accession Number
+
+Normalization Type
+Normalization Term Source REF
+Normalization Term Accession Number
+
+Date of Experiment	2015-01-09
+Public Release Date	2016-05-12
+
+PubMed ID
+Publication DOI
+Publication Author List
+Publication Title
+Publication Status
+Publication Status Term Source REF
+Publication Status Term Accession Number
+
+Experiment Description	This experiment contains a subset of data from the BLUEPRINT Epigenome project ( http://www.blueprint-epigenome.eu ), which aims at producing a reference haemopoetic epigenomes for the research community.   4 samples of primary cells from tonsil with cell surface markes CD20med/CD38high in young individuals (3 to 10 years old) are included in this experiment. This ArrayExpress record contains only meta-data.  Raw data files have been archived at the European Genome-Phenome Archive (EGA, www.ebi.ac.uk/ega) by the consortium, with restricted access to protect sample donors' identity.  The relevant accessions of EGA data sets is EGAD00001001523. Details on how to apply for data access via the BLUEPRINT data access committee are on the EGA data set pages.  The mapping of samples to these EGA accessions can be found in the 'Sample Data Relationship Format' file of this ArrayExpress record. Information on individual samples and sequencing libraries can also be found on the BLUEPRINT data coordination centre (DCC) website: http://dcc.blueprint-epigenome.eu
+
+Protocol Name	P-MTAB-53994	P-MTAB-50069	P-MTAB-50068
+Protocol Type	nucleic acid extraction protocol	nucleic acid library construction protocol	sample collection protocol
+Protocol Term Source REF	EFO	EFO	EFO
+Protocol Term Accession Number	EFO_0002944	EFO_0004184	EFO_0005518
+Protocol Description	Total RNA from plasma cells were extracted using Illustra triplePrep kit (General Electric) and quality assessed by Agilent 2100 BioAnalyzer (Agilent Technologies).	300ng of mRNA was used as starting materials and sequencing library was prepared as described in the Illumina TruSeq RNA Sample Preparation Guide.  Fragment size was about 200bp.	The individuals contributing to the tonsillar plasma cells were recruited following the standards and recommendations of the Ethics Committee at the Hospital Universidad de Navarra (Pamplona, Spain)and the declaration of Helsinki.  Tonsillar plasma cells were separated from children tonsils obtained from the Clinica Universidad de Navarra. Tonsils were minced extensively and after Ficoll-Isopaque density centrifugation, enrichment of CD19+ cells was performed by using the AutoMACS system (Milteny Biotec, Auburn, CA). Plasma cells (CD20med/CD38high) were separated by FACS sorting after labeling with anti-CD20 FITC (BD Biosciences) and anti-CD38 APC (BD Biosciences). Purity of the cell population was confirmed by 2-color flow cytometry using CD45+PerCP/CD138+ PE criteria (Miltenyi Biotec, Germany) and exceeded 90%.
+Protocol Parameters			
+Protocol Hardware			
+Protocol Software			
+Protocol Contact			
+
+Term Source Name	EFO	ArrayExpress
+Term Source File	http://www.ebi.ac.uk/efo/	http://www.ebi.ac.uk/arrayexpress/
+Term Source Version	2.38
+
+SDRF File	E-MTAB-4754.sdrf.txt
+Comment [Submitted Name]	RNA-Seq of polyA mRNA from plasma cells of tonsil from healthy individuals in the BLUEPRINT epigenome project
+Comment [SecondaryAccession]	EGAD00001001523
+Comment [AEExperimentType]	RNA-seq of coding RNA
+Comment[ArrayExpressAccession]	E-MTAB-4754
+Comment [AEMINSEQEScore]	4

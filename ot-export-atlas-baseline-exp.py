@@ -14,10 +14,13 @@ arg_parser.add_argument('-o', '--output', required=True,
                         help="Directoy path for output. Two files created, one for data and one for metadata"
                         )
 
+FIXTURE_DIR = os.path.join(
+    os.path.dirname(os.path.realpath(__file__)),
+    'test-data',
+    )
 
 def read_condensed(condensed_path):
     cond_cols = ['Accession', 'Array', 'Sample', 'Annot_type', 'Annot', 'Annot_value', 'Annot_ont_URI']
-    cond = pd.DataFrame()
     return pd.read_csv(condensed_path, sep="\t", names=cond_cols)
 
 
@@ -28,7 +31,6 @@ def read_configuration(configuration_path):
 
 def produce_metadata(acc, expType, species, literature_ids, provider, assay_dictionary):
     """
-
     :param acc: obtained from condensed or path
     :param expType: obtained from configuration file
     :param species: obtained from condensed SDRF
@@ -50,6 +52,21 @@ def produce_metadata(acc, expType, species, literature_ids, provider, assay_dict
 
 
 def get_annotation_value_from_condensed(condensed_df, annotation, sample=None):
+    """
+    Given a condensed SDRF as panda data frame, it will provide the first value
+    for an annotation, either for a sample or for all of them.
+
+    :param condensed_df:
+    :param annotation:
+    :param sample: optional, useful to leave as None for organisms.
+    :return:
+    >>> acc = "E-MTAB-4754"
+    >>> cond_df = read_condensed(f"{FIXTURE_DIR}/{acc}/{acc}.condensed-sdrf.tsv")
+    >>> get_annotation_value_from_condensed(cond_df, annotation="organism")
+    'Homo sapiens'
+    >>> get_annotation_value_from_condensed(cond_df, annotation="disease", sample="ERR732486")
+    'normal'
+    """
     df = condensed_df
 
     if sample:
@@ -60,6 +77,26 @@ def get_annotation_value_from_condensed(condensed_df, annotation, sample=None):
         return res.iloc[0]
     else:
         return None
+
+
+def get_all_annotation_fields_for_sample_from_condensed(condensed_df, sample):
+    """
+    Given a condensed SDRF as pandas data frame, it will provide all possible
+    different annotation fields for a sample.
+
+
+    :param condensed_df:
+    :param sample:
+    :return:
+    >>> acc = "E-MTAB-4754"
+    >>> cond_df = read_condensed(f"{FIXTURE_DIR}/{acc}/{acc}.condensed-sdrf.tsv")
+    >>> get_all_annotation_fields_for_sample_from_condensed(cond_df, sample="ERR732486")
+    ['age', 'biosource type', 'cell type', 'disease', 'ethnic group', 'organism', 'organism part', 'phenotype', 'sex']
+    """
+    df = condensed_df
+
+    return df[df['Sample'] == sample].Annot.unique().tolist()
+
 
 def produce_assay_dict(condensed_df, configuration_xml):
     """
@@ -82,6 +119,15 @@ def produce_assay_dict(condensed_df, configuration_xml):
     :param condensed_pd:
     :param configuration_xml:
     :return:
+
+    >>> acc = "E-MTAB-4754"
+    >>> cond_df = read_condensed(f"{FIXTURE_DIR}/{acc}/{acc}.condensed-sdrf.tsv")
+    >>> conf_xml = read_configuration(f"{FIXTURE_DIR}/{acc}/{acc}-configuration.xml")
+    >>> assay_dict = produce_assay_dict(cond_df, conf_xml)
+    >>> assay_dict[0]['id']
+    'ERR732483'
+    >>> len(assay_dict)
+    4
     """
 
     assay_dict = []
@@ -89,7 +135,7 @@ def produce_assay_dict(condensed_df, configuration_xml):
         for assay in ag:
             entry = {'assay_group': ag.get("id"), 'id': assay.text}
 
-            for annot in ["sex", "organism part"]:
+            for annot in get_all_annotation_fields_for_sample_from_condensed(condensed_df, assay.text):
                 value = get_annotation_value_from_condensed(condensed_df, annot, sample=assay.text)
                 if value:
                     entry[annot] = value
@@ -107,6 +153,13 @@ def read_idf_to_dict(idf_path):
     line is the key for the rest of the line.
     :param idf_path:
     :return:
+
+    >>> acc = "E-MTAB-4754"
+    >>> idf_obj = read_idf_to_dict(f"{FIXTURE_DIR}/{acc}/{acc}.idf.txt")
+    >>> 'person last name' in idf_obj
+    True
+    >>> idf_obj['date of experiment']
+    '2015-01-09'
     """
     res = {}
     with open(idf_path, 'r') as idf_file:
@@ -131,6 +184,7 @@ def get_expression_units(experiment_type):
         return ["ppb"]
     if experiment_type == "proteomics_baseline_dia":
         return ["aa"]
+
 
 def get_file_label(experiment_type, expression_unit):
     """
@@ -195,6 +249,11 @@ def get_provider(idf_dict):
 
     :param idf_dict: as read from the IDF file.
     :return:
+
+    >>> acc = "E-MTAB-4754"
+    >>> idf_obj = read_idf_to_dict(f"{FIXTURE_DIR}/{acc}/{acc}.idf.txt")
+    >>> get_provider(idf_obj)
+    'BLUEPRINT consortium; ArrayExpress'
     """
 
     f"{idf_dict['person last name']}, {idf_dict['person first name']}"
