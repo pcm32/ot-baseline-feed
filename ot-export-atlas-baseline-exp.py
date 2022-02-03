@@ -7,6 +7,7 @@ import argparse
 from os.path import basename
 from itertools import chain
 from re import sub
+import bz2
 
 arg_parser = argparse.ArgumentParser()
 arg_parser.add_argument('-p', '--path-to-experiment', required=True,
@@ -360,7 +361,7 @@ def unaggregated_data_iterator(data_path, assay_dictionary, unit):
         for line in data_file:
             tokens = line.strip().split("\t")
             gene_id = tokens[0]
-            entry = {"geneProductId": gene_id, "expression": [], "unit": unit}
+            entry = {"geneProductId": gene_id, "unit": unit, "expression": []}
 
             for a_i in range(0, len(assays)):
                 assay = assays[a_i]
@@ -407,7 +408,7 @@ if __name__ == '__main__':
         file_label = get_file_label(expType, unit)
         data_file = f"{args.path_to_experiment}/{acc}{file_label}.tsv"
         if os.path.isfile(data_file):
-            with open(f"{args.output}/{acc}-expression-data-{unit}.jsonl", 'w') as data_jsonl:
+            with bz2.open(f"{args.output}/{acc}-expression-data-{unit}.jsonl.bz2", 'wt') as data_jsonl:
                 for exp_d in quartile_data_iterator(data_file, assay_dictionary, unit):
                     data_jsonl.write(json.dumps(exp_d)+"\n")
 
@@ -415,7 +416,7 @@ if __name__ == '__main__':
             unaggregated_data_file = f"{args.non_aggregated_data_dir}/{acc}{file_label}.tsv.undecorated"
             
             if os.path.isfile(unaggregated_data_file):
-                with open(f"{args.output}/{acc}-unaggregated-expression-data-{unit}.jsonl", "w") as data_jsonl:
+                with bz2.open(f"{args.output}/{acc}-unaggregated-expression-data-{unit}.jsonl.bz2", "wt") as data_jsonl:
                     for exp_d in unaggregated_data_iterator(unaggregated_data_file, assay_dictionary, unit):
                         data_jsonl.write(json.dumps(exp_d)+"\n")
 
