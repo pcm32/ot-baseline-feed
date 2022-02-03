@@ -37,11 +37,12 @@ def read_configuration(configuration_path):
         return ET.parse(conf_file).getroot()
 
 
-def produce_metadata(acc, exp_type, species, literature_ids, provider, assay_dictionary):
+def produce_metadata(acc, exp_type, species, speciesOnt, literature_ids, provider, assay_dictionary):
     """
     :param acc: obtained from condensed or path
     :param exp_type: obtained from configuration file
     :param species: obtained from condensed SDRF
+    :param speciesOnt: obtained from condensed SDRF
     :param literature_ids: obtained from IDF
     :param provider: IDF Person last name and First name, if existing.
     :param assay_dictionary: a combined object made from the condensed and the configuration file.
@@ -52,7 +53,9 @@ def produce_metadata(acc, exp_type, species, literature_ids, provider, assay_dic
     metadata['experimentId'] = acc
     metadata['experimentType'] = exp_type
     metadata['species'] = species
-    metadata['literature'] = literature_ids
+    if speciesOnt:
+        metadata['speciesOntURI'] = speciesOnt
+    metadata['pubmedIds'] = literature_ids
     metadata['provider'] = provider
     metadata['experimentalDesigns'] = assay_dictionary
 
@@ -106,6 +109,34 @@ def get_all_annotation_fields_for_sample_from_condensed(condensed_df, sample):
     return df[df['Sample'] == sample].Annot.unique().tolist()
 
 
+def get_ontology_annotation_from_condensed(condensed_df, annotation, sample=None):
+    """
+    Given a condensed SDRF as panda data frame, it will provide the first value
+    for an annotation, either for a sample or for all of them.
+
+    :param condensed_df:
+    :param annotation:
+    :param sample: optional, useful to leave as None for organisms.
+    :return:
+    >>> acc = "E-MTAB-4754"
+    >>> cond_df = read_condensed(f"{FIXTURE_DIR}/{acc}/{acc}.condensed-sdrf.tsv")
+    >>> get_ontology_annotation_from_condensed(cond_df, annotation="organism")
+    'http://purl.obolibrary.org/obo/NCBITaxon_9606'
+    >>> get_ontology_annotation_from_condensed(cond_df, annotation="disease", sample="ERR732486")
+    'http://purl.obolibrary.org/obo/PATO_0000461'
+    """
+    df = condensed_df
+
+    if sample:
+        res = df[(df['Sample'] == sample) & (df['Annot'] == annotation)].Annot_ont_URI
+    else:
+        res = df[df['Annot'] == annotation].Annot_ont_URI
+    if len(res) and not pd.isna(res.iloc[0]):
+        return res.iloc[0]
+    else:
+        return None
+
+
 def produce_assay_dict(condensed_df, configuration_xml):
     """
     Produces a dictionary of structure:
@@ -132,7 +163,7 @@ def produce_assay_dict(condensed_df, configuration_xml):
     >>> cond_df = read_condensed(f"{FIXTURE_DIR}/{acc}/{acc}.condensed-sdrf.tsv")
     >>> conf_xml = read_configuration(f"{FIXTURE_DIR}/{acc}/{acc}-configuration.xml")
     >>> assay_dict = produce_assay_dict(cond_df, conf_xml)
-    >>> assay_dict[0]['assay']
+    >>> assay_dict[0]['assayId']
     'ERR732483'
     >>> len(assay_dict)
     4
@@ -141,12 +172,17 @@ def produce_assay_dict(condensed_df, configuration_xml):
     assay_dict = []
     for ag in configuration_xml.iter("assay_group"):
         for assay in ag:
-            entry = {'assayGroup': ag.get("id"), 'assay': assay.text}
+            entry = {'assayGroupId': ag.get("id"), 'assayId': assay.text, 'assayGroup': ag.get('label')}
 
             for annot in get_all_annotation_fields_for_sample_from_condensed(condensed_df, assay.text):
                 value = get_annotation_value_from_condensed(condensed_df, annot, sample=assay.text)
+                if annot == 'organism':
+                    continue
                 if value:
                     entry[camel_case(annot)] = value
+                onto_annot = get_ontology_annotation_from_condensed(condensed_df, annot, sample=assay.text)
+                if onto_annot:
+                    entry[f"{camel_case(annot)}OntURI"] = onto_annot
 
             if 'technical_replicate_id' in assay.attrib:
                 entry['technicalReplicateId'] = assay.attrib['technical_replicate_id']
@@ -241,7 +277,7 @@ def quartile_data_iterator(data_path, metadata, unit):
             for ag_i in range(0, len(assay_groups)):
                 ag = assay_groups[ag_i]
                 ag_data = tokens[2+ag_i].split(",")
-                expression_entry = {'agId': ag,
+                expression_entry = {'assayGroupId': ag,
                                     "min": float(ag_data[0]),
                                     "q1": float(ag_data[1]),
                                     "q2": float(ag_data[2]),
@@ -253,7 +289,7 @@ def quartile_data_iterator(data_path, metadata, unit):
             yield entry
 
 
-def check_biyection(elements_in_data, metadata, type="assayGroup"):
+def check_biyection(elements_in_data, metadata, type="assayGroupId"):
     e_in_metadata = set()
     for m in metadata:
         e_in_metadata.add(m[type])
@@ -319,7 +355,7 @@ def unaggregated_data_iterator(data_path, assay_dictionary, unit):
         header = data_file.readline().strip().split("\t")
         assays = header[first_data_index:len(header)]
 
-        check_biyection(assays, assay_dictionary, type="assay")
+        check_biyection(assays, assay_dictionary, type="assayId")
 
         for line in data_file:
             tokens = line.strip().split("\t")
@@ -329,7 +365,7 @@ def unaggregated_data_iterator(data_path, assay_dictionary, unit):
             for a_i in range(0, len(assays)):
                 assay = assays[a_i]
                 exp = tokens[first_data_index + a_i]
-                expression_entry = {'aId': assay, "value": float(exp)}
+                expression_entry = {'assayId': assay, "value": float(exp)}
                 entry['expression'].append(expression_entry)
 
             yield entry
@@ -358,6 +394,7 @@ if __name__ == '__main__':
     metadata = produce_metadata(acc=acc,
                                 exp_type=expType,
                                 species=get_annotation_value_from_condensed(condensed_pd, annotation="organism"),
+                                speciesOnt=get_ontology_annotation_from_condensed(condensed_pd, annotation="organism"),
                                 literature_ids=lit_ids,
                                 provider=provider,
                                 assay_dictionary=assay_dictionary
